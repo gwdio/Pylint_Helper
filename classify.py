@@ -36,14 +36,26 @@ RULES = [
     (re.compile(r"\bUnused variable\b", re.I), "Unused variable/argument"),
     (re.compile(r"\bUnused argument\b", re.I), "Unused variable/argument"),
 
-    # Style / logic smells (roll into 'Bad code logic' bucket)
+    # TODOs (match "TODO", "TODO:", "TODO -", etc.)
+    (re.compile(r"\bTODO\b[:\-]?", re.I), "TODO"),
+
+
+    # Complexity limits (too many X)
+    (re.compile(
+        r"\bToo many (?:local variables|branches|arguments|instance attributes|public methods|statements)\b",
+        re.I
+    ), "Complexity limit"),
+
+    # Style / logic smells (grab-bag)
     (re.compile(r"Using an f-string that does not have any interpolated variables", re.I), "Bad code logic"),
     (re.compile(r"Consider explicitly re-raising", re.I), "Bad code logic"),
     (re.compile(r"\bunnecessary else\b", re.I), "Bad code logic"),
 ]
 
-HEADER_RE = re.compile(r"^(?P<file>[^:]+):\s*\d+\s+errors?:\s*$", re.I)
-ENTRY_RE  = re.compile(r"^(?P<line>\d+):\s*(?P<msg>.+?)\s*$")
+# File block header: "path: N errors:"
+HEADER_RE = re.compile(r"^\s*(?P<file>[^:\n]+):\s*\d+\s+errors?:\s*$", re.I)
+# Entry: "LINE: message"
+ENTRY_RE  = re.compile(r"^\s*(?P<line>\d+):\s*(?P<msg>.+?)\s*$")
 
 def classify(msg: str) -> str | None:
     for rx, cat in RULES:
@@ -51,9 +63,21 @@ def classify(msg: str) -> str | None:
             return cat
     return None
 
+def trim_optional_header(lines: list[str]) -> list[str]:
+    """
+    Drop any leading header noise (e.g., "Lint Output", "Total errors: 151", blank lines)
+    until the first file block header line is found.
+    """
+    i = 0
+    n = len(lines)
+    while i < n and not HEADER_RE.match(lines[i]):
+        i += 1
+    return lines[i:] if i < n else lines  # if no header found, return as-is
+
 def parse_blocks(lines):
     """
     Yields (filepath, [(line:int, message:str), ...]) for each block.
+    Accepts indented lines and ignores non-matching fluff.
     """
     i = 0
     n = len(lines)
@@ -68,11 +92,11 @@ def parse_blocks(lines):
         while i < n and not HEADER_RE.match(lines[i]):
             e = ENTRY_RE.match(lines[i])
             if e:
-                entries.append((int(e.group("line")), e.group("msg")))
+                entries.append((int(e.group("line")), e.group("msg").strip()))
             i += 1
         yield filepath, entries
 
-def summarize(filepath, entries):
+def summarize(entries):
     """
     Returns: (summary_dict, unreconcilables_list)
     summary_dict: {category -> sorted set of line numbers}
@@ -86,9 +110,8 @@ def summarize(filepath, entries):
             unreconcilable.append((line, msg))
         else:
             cat_lines[cat].add(line)
-    # sort lines for consistent output
     cat_lines = {k: sorted(v) for k, v in cat_lines.items()}
-    # stable category ordering (nice to read)
+
     preferred_order = [
         "Unused import",
         "Import order",
@@ -100,13 +123,14 @@ def summarize(filepath, entries):
         "Unresolved module",
         "Unused variable/argument",
         "Unnecessary pass statement",
+        "TODO",
+        "Complexity limit",
         "Bad code logic",
     ]
     ordered = OrderedDict()
     for cat in preferred_order:
         if cat in cat_lines:
             ordered[cat] = cat_lines[cat]
-    # any extra categories (if rules extended later)
     for cat in sorted(cat_lines.keys()):
         if cat not in ordered:
             ordered[cat] = cat_lines[cat]
@@ -124,11 +148,14 @@ def main():
         print(f"ERROR: Could not find '{path}'. Put your lint output there or pass a path.")
         sys.exit(1)
 
+    # Trim any optional header
+    raw = trim_optional_header(raw)
+
     all_unrec = []  # (filepath, line, msg)
     outputs = []
 
     for filepath, entries in parse_blocks(raw):
-        categories, unrec = summarize(filepath, entries)
+        categories, unrec = summarize(entries)
         out = [f"{filepath}:"]
         for cat, lines in categories.items():
             out.append(f"  - {cat} ({len(lines)}): {format_lines(lines)}")
@@ -136,7 +163,10 @@ def main():
         for line, msg in unrec:
             all_unrec.append((filepath, line, msg))
 
-    print("\n\n".join(outputs))
+    if outputs:
+        print("\n\n".join(outputs))
+    else:
+        print("No file blocks found. Ensure your input has lines like: 'path/to/file.py: N errors:'")
 
     if all_unrec:
         print("\n\nunreconcilable messages:")
