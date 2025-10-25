@@ -1,5 +1,5 @@
 """
-Pylint digestor for when pyline output is extremely long
+Pylint digestor for when pylint output is extremely long
 Classifies most issues via pattern matching and outputs a much more readable summary
 """
 import re
