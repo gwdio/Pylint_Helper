@@ -12,7 +12,8 @@ Parse Pylint-style output and produce a compact per-file summary:
 ## Usage
 
 1. Clone repository `git clone https://github.com/gwdio/Pylint_Helper.git`
-2. Put your raw linter output into `input.txt` (or pass a file path).
+2. make `input.txt` in the repository root.
+3. Put your raw linter output into `input.txt` (or pass a file path).
 
 ```bash
 # default: reads input.txt
