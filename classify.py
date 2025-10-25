@@ -45,6 +45,14 @@ RULES = [
         r"\bToo many (?:local variables|branches|arguments|instance attributes|public methods|statements)\b",
         re.I
     ), "Complexity limit"),
+    
+    # Naming style
+    (re.compile(
+        r'\b(?:constant|variable|function|method|class)\s+name\s+["\']?[^"\']+["\']?\s+'
+        r'doesn[’\']t\s+conform\s+to\s+(?:upper_case|\{[^}]+\})\s+naming\s+style',
+        re.I
+    ), "Naming style"),
+
 
     # Style / logic smells (grab-bag)
     (re.compile(r"Using an f-string that does not have any interpolated variables", re.I), "Bad code logic"),
@@ -70,6 +78,7 @@ PREFERRED_ORDER = [
         "Unused variable/argument",
         "Unnecessary pass statement",
         "TODO",
+        "Naming style",
         "Complexity limit",
         "Bad code logic",
     ]
