@@ -57,6 +57,23 @@ HEADER_RE = re.compile(r"^\s*(?P<file>[^:\n]+):\s*\d+\s+errors?:\s*$", re.I)
 # Entry: "LINE: message"
 ENTRY_RE  = re.compile(r"^\s*(?P<line>\d+):\s*(?P<msg>.+?)\s*$")
 
+# Grouping of issue reports
+PREFERRED_ORDER = [
+        "Unused import",
+        "Import order",
+        "Trailing whitespace",
+        "Line too long",
+        "Missing docstring",
+        "Missing type annotation",
+        "Type error",
+        "Unresolved module",
+        "Unused variable/argument",
+        "Unnecessary pass statement",
+        "TODO",
+        "Complexity limit",
+        "Bad code logic",
+    ]
+
 def classify(msg: str) -> str | None:
     for rx, cat in RULES:
         if rx.search(msg):
@@ -96,6 +113,30 @@ def parse_blocks(lines):
             i += 1
         yield filepath, entries
 
+def summarize_entries(entries):
+    """Return (cat -> set(lines), unreconcilables[list of (line,msg)])."""
+    cat_lines = defaultdict(set)
+    unreconcilable = []
+    for line, msg in entries:
+        cat = classify(msg)
+        if cat is None:
+            unreconcilable.append((line, msg))
+        else:
+            cat_lines[cat].add(line)
+    return cat_lines, unreconcilable
+
+def order_categories(cat_lines_map: dict[str, set[int]]) -> OrderedDict:
+    ordered = OrderedDict()
+    for cat in PREFERRED_ORDER:
+        if cat in cat_lines_map:
+            ordered[cat] = sorted(cat_lines_map[cat])
+    # include any categories not in preferred list
+    for cat in sorted(cat_lines_map.keys()):
+        if cat not in ordered:
+            ordered[cat] = sorted(cat_lines_map[cat])
+    return ordered
+
+
 def summarize(entries):
     """
     Returns: (summary_dict, unreconcilables_list)
@@ -111,24 +152,8 @@ def summarize(entries):
         else:
             cat_lines[cat].add(line)
     cat_lines = {k: sorted(v) for k, v in cat_lines.items()}
-
-    preferred_order = [
-        "Unused import",
-        "Import order",
-        "Trailing whitespace",
-        "Line too long",
-        "Missing docstring",
-        "Missing type annotation",
-        "Type error",
-        "Unresolved module",
-        "Unused variable/argument",
-        "Unnecessary pass statement",
-        "TODO",
-        "Complexity limit",
-        "Bad code logic",
-    ]
     ordered = OrderedDict()
-    for cat in preferred_order:
+    for cat in PREFERRED_ORDER:
         if cat in cat_lines:
             ordered[cat] = cat_lines[cat]
     for cat in sorted(cat_lines.keys()):
@@ -148,30 +173,43 @@ def main():
         print(f"ERROR: Could not find '{path}'. Put your lint output there or pass a path.")
         sys.exit(1)
 
-    # Trim any optional header
+    # Trim any optional header first
     raw = trim_optional_header(raw)
 
-    all_unrec = []  # (filepath, line, msg)
-    outputs = []
+    # Aggregate across duplicate file blocks
+    per_file_cats: dict[str, dict[str, set[int]]] = defaultdict(lambda: defaultdict(set))
+    per_file_unrec: dict[str, list[tuple[int, str]]] = defaultdict(list)
 
+    any_blocks = False
     for filepath, entries in parse_blocks(raw):
-        categories, unrec = summarize(entries)
+        any_blocks = True
+        cat_lines, unrec = summarize_entries(entries)
+        for cat, lines in cat_lines.items():
+            per_file_cats[filepath][cat].update(lines)        # union by category
+        per_file_unrec[filepath].extend(unrec)                # keep evidence
+
+    if not any_blocks:
+        print("No file blocks found. Input should contain lines like: 'path/to/file.py: N errors:'")
+        sys.exit(0)
+
+    # Print one merged block per file
+    outputs = []
+    for filepath in sorted(per_file_cats.keys()):
+        ordered = order_categories(per_file_cats[filepath])
         out = [f"{filepath}:"]
-        for cat, lines in categories.items():
-            out.append(f"  - {cat} ({len(lines)}): {format_lines(lines)}")
+        for cat, lines in ordered.items():
+            out.append(f"  - {cat} ({len(lines)}): {', '.join(map(str, lines))}")
         outputs.append("\n".join(out))
-        for line, msg in unrec:
-            all_unrec.append((filepath, line, msg))
 
-    if outputs:
-        print("\n\n".join(outputs))
-    else:
-        print("No file blocks found. Ensure your input has lines like: 'path/to/file.py: N errors:'")
+    print("\n\n".join(outputs))
 
-    if all_unrec:
+    # Print unreconcilables (grouped by file) if any
+    if any(per_file_unrec.values()):
         print("\n\nunreconcilable messages:")
-        for fp, line, msg in all_unrec:
-            print(f"- {fp} @ {line}: {msg}")
+        for filepath in sorted(per_file_unrec.keys()):
+            for line, msg in per_file_unrec[filepath]:
+                print(f"- {filepath} @ {line}: {msg}")
+
 
 if __name__ == "__main__":
     main()
