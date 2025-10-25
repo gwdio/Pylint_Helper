@@ -16,7 +16,20 @@ RULES = [
 
     # Imports
     (re.compile(r"\bUnused (?:[\w\.]+ )?import(?:ed)?\b", re.I), "Unused import"),
-    (re.compile(r"standard import .* should be placed before third party imports", re.I), "Import order"),
+
+    (re.compile(
+        r'\bimport\s+["\'][^"\']+["\']\s+should\s+be\s+placed\s+at\s+the\s+top\s+of\s+the\s+module',
+        re.I
+    ), "Import order"),
+
+    (re.compile(
+        r'\b(?:standard|third\s+party|first\s+party)\s+import'
+        r'\s+["\'][^"\']+["\'](?:\s*,\s*["\'][^"\']+["\'])*'
+        r'\s+should\s+be\s+placed\s+before\s+'
+        r'(?:standard|third\s+party|first\s+party)\s+imports?'
+        r'\s+["\'][^"\']+["\'](?:\s*,\s*["\'][^"\']+["\'])*',
+        re.I
+    ), "Import order"),
 
     # Docs
     (re.compile(r"Missing (?:function or method|module) docstring", re.I), "Missing docstring"),
@@ -52,6 +65,9 @@ RULES = [
         r'doesn[’\']t\s+conform\s+to\s+(?:upper_case|\{[^}]+\})\s+naming\s+style',
         re.I
     ), "Naming style"),
+    
+    # Reassigned Variable
+    (re.compile(r'\bredefining name\s+["\']?[^"\']+["\']?\s+from outer scope\s*\(line\s*\d+\)', re.I), "Redefined name"),
 
 
     # Style / logic smells (grab-bag)
@@ -80,6 +96,7 @@ PREFERRED_ORDER = [
         "TODO",
         "Naming style",
         "Complexity limit",
+        "Redefined name"
         "Bad code logic",
     ]
 
