@@ -62,7 +62,7 @@ RULES = [
     # Naming style
     (re.compile(
         r'\b(?:constant|variable|function|method|class)\s+name\s+["\']?[^"\']+["\']?\s+'
-        r'doesn[’\']t\s+conform\s+to\s+(?:upper_case|\{[^}]+\})\s+naming\s+style',
+        r'doesn[’\']t\s+conform\s+to\s+(?:\{[^}]+\}|[a-z_-]*case)\s+naming\s+style',
         re.I
     ), "Naming style"),
     
